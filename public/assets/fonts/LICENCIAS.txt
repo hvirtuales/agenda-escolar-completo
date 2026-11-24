@@ -1,0 +1,3 @@
+Fuentes con licencia SIL Open Font License 1.1 (uso, inclusión y redistribución libres):
+Inter (Rasmus Andersson), Nunito (Vernon Adams), Montserrat (Julieta Ulanovsky), Poppins (Indian Type Foundry).
+Archivos tomados de los paquetes @fontsource (subconjunto latino). Se sirven desde este servidor, sin CDN.
