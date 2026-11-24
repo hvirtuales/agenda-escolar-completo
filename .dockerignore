@@ -1,0 +1,21 @@
+# Lo que NO entra en la imagen de Docker.
+.git
+.github
+.env
+.env.*
+docker/.env
+vendor
+node_modules
+herramientas
+tests
+*.zip
+*.bak*
+writable/cache/*
+writable/logs/*
+writable/session/*
+writable/uploads/*
+writable/debugbar/*
+writable/*.lock
+writable/.env
+!writable/**/index.html
+!writable/**/.htaccess
