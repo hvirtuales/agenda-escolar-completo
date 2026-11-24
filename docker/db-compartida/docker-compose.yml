@@ -1,0 +1,40 @@
+# MariaDB compartida por los proyectos del VPS (Agenda Escolar y los que vengan).
+# Es infraestructura propia: copie esta carpeta a /opt/db-compartida y adminístrela desde allí.
+#   cd /opt/db-compartida && cp .env.example .env   (ponga DB_ROOT_PASSWORD)
+#   docker compose up -d
+#   ./crear-base.sh educai        (una base y un usuario por proyecto)
+#
+# - Sin puertos publicados: solo la alcanzan los contenedores unidos a la red «db-compartida».
+# - En esa red responde como «db-compartida».
+name: db-compartida
+
+services:
+  mariadb:
+    # Versión fijada con su huella; para actualizar, cambie ambas y: docker compose pull && docker compose up -d
+    image: mariadb:11.4.13@sha256:a8992b5e5404d11e03c54a31d0c1bdea3fd116d283aa6d1a627551f29045309b
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD en /opt/db-compartida/.env}"
+      MARIADB_AUTO_UPGRADE: "1"           # al subir de versión, actualiza las tablas del sistema solo
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - datos:/var/lib/mysql
+    networks:
+      db:
+        aliases:
+          - db-compartida
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+networks:
+  db:
+    name: db-compartida                   # nombre fijo: los proyectos se unen a ella como red externa
+
+volumes:
+  datos:

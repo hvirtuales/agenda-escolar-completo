@@ -1,0 +1,48 @@
+# Agenda Escolar con Docker, SIN base de datos propia: se conecta a la MariaDB compartida del VPS (docker/db-compartida/).
+# Se activa con esta línea en docker/.env (así funcionan up, ps, exec y logs sin -f):
+#   COMPOSE_FILE=docker-compose.externa.yml
+# En el instalador: servidor «db-compartida», y la base, el usuario y la clave que dio db-compartida/crear-base.sh.
+#
+# Mismo nombre de proyecto que docker-compose.yml → mismo volumen app_data (.env, clave de cifrado y archivos).
+# Mantenga el servicio «app» igual en los dos archivos.
+name: agenda-escolar
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: agenda-escolar:latest
+    restart: unless-stopped
+    environment:
+      APP_URL: "${APP_URL:-https://agendaescolar.co/}"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-172.16.0.0/12}"
+      AUTO_MIGRATE: "${AUTO_MIGRATE:-0}"
+    volumes:
+      - app_data:/var/www/html/writable   # .env, sesiones, registros y archivos de los colegios
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:                              # lo mínimo para el arranque (chown, cambio a www-data) y Apache en el puerto 80
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
+      - DAC_OVERRIDE
+    networks:
+      proxy:
+        aliases:
+          - agenda-escolar-app            # nombre único en la red compartida (otros proyectos pueden tener un «app»)
+      basedatos: {}                       # aquí la base de datos responde como «db-compartida»
+
+networks:
+  proxy:                                  # red del Caddy existente
+    external: true
+    name: "${PROXY_NETWORK:-ai-specialists_default}"
+  basedatos:                              # red de la MariaDB compartida
+    external: true
+    name: "${DB_NETWORK:-db-compartida}"
+
+volumes:
+  app_data:

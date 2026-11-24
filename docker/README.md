@@ -1,6 +1,6 @@
 # Agenda Escolar con Docker
 
-Dos contenedores: **app** (PHP 8.4 + Apache, raíz web en `public/`) y **db** (MariaDB 11.4).
+Dos contenedores: **app** (PHP 8.4 + Apache, raíz web en `public/`) y **db** (MariaDB 11.4), o solo **app** conectada a una MariaDB compartida (ver «Base de datos compartida»).
 Sirve para un VPS o servidor propio. En cPanel no se usa Docker: allí va el ZIP o el repositorio completo.
 
 Dominio configurado: **https://agendaescolar.co/** (`APP_URL` en `docker/.env`).
@@ -66,6 +66,55 @@ Las imágenes base están fijadas por versión y huella (`docker/Dockerfile`, `d
 seguridad, actualice esas versiones (a mano o con Renovate/Dependabot) y reconstruya. Revise la imagen con:
 ```bash
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --ignore-unfixed agenda-escolar:latest
+```
+
+## Base de datos compartida (sin MariaDB propia)
+Una sola MariaDB para varios proyectos del VPS, en su propia red (`db-compartida`), sin puertos publicados.
+Cada proyecto tiene su base y su usuario, que solo ve su base.
+```
+agenda-escolar-app ──red db-compartida──> db-compartida (MariaDB)  <── otros proyectos (cada uno con su usuario)
+```
+
+### 1. Montar la base compartida (una sola vez por VPS)
+```bash
+mkdir -p /opt/db-compartida
+cp /var/www/html/docker/db-compartida/docker-compose.yml /var/www/html/docker/db-compartida/crear-base.sh /var/www/html/docker/db-compartida/.env.example /opt/db-compartida/
+cd /opt/db-compartida
+cp .env.example .env
+sed -i "s|^DB_ROOT_PASSWORD=.*|DB_ROOT_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=')|" .env
+chmod 600 .env && chmod +x crear-base.sh
+docker compose up -d
+docker compose ps            # espere «healthy»
+```
+
+### 2. Crear la base de un proyecto
+```bash
+cd /opt/db-compartida && ./crear-base.sh educai
+```
+Muestra la contraseña una sola vez: guárdela.
+
+### 3a. Instalación nueva sin MariaDB propia
+En `docker/.env`: `COMPOSE_FILE=docker-compose.externa.yml`. Luego `docker compose up -d --build` y en el instalador:
+servidor `db-compartida`, base y usuario `educai`, y la contraseña del paso 2.
+
+### 3b. Migrar la instalación actual (la que ya tiene MariaDB propia)
+```bash
+cd /var/www/html && git pull
+cd docker && chmod +x migrar-a-db-compartida.sh && ./migrar-a-db-compartida.sh
+```
+El script pide la contraseña del paso 2 y:
+1. respalda la base y el `.env` de la app en `/root/respaldos/`;
+2. detiene la app (unos minutos fuera de línea), copia la base y **compara los conteos** (usuarios, instituciones, auditoría…);
+3. cambia la conexión en el `.env` de la app, la arranca con `docker-compose.externa.yml` y comprueba que responde;
+4. **detiene, pero no borra,** la MariaDB propia.
+
+Si algo falla antes del cambio, la app vuelve a arrancar como estaba. Para volver atrás después:
+`./migrar-a-db-compartida.sh --revertir`.
+Tras una semana sin problemas, borre la MariaDB propia: `docker compose -f docker-compose.yml rm -f db` y su volumen (`docker volume ls | grep db_data`).
+
+**Respaldo** de la base compartida (todas las bases):
+```bash
+cd /opt/db-compartida && docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb-dump -uroot --all-databases --single-transaction' > /root/respaldos/db-compartida-$(date +%F).sql
 ```
 
 ## Seguridad aplicada

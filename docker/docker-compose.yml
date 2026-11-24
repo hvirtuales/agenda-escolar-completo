@@ -5,6 +5,9 @@
 #   abra https://agendaescolar.co/install.php   (servidor de base de datos: agenda-escolar-db)
 # HTTPS: lo da el Caddy que ya corre en el VPS (proyecto ai-specialists). La app se une a su red con el alias
 # «agenda-escolar-app» y no publica puertos; ver docker/caddy/agendaescolar.caddy.
+#
+# Modo con MariaDB propia (este archivo). Para usar la base de datos compartida del VPS: docker-compose.externa.yml
+# (se elige con COMPOSE_FILE en docker/.env). Mantenga el servicio «app» igual en los dos archivos.
 name: agenda-escolar
 
 services:
