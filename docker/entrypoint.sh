@@ -7,7 +7,8 @@ cd /var/www/html
 for d in cache logs session uploads debugbar; do
   mkdir -p "writable/$d"
 done
-chown www-data:www-data writable writable/cache writable/logs writable/session writable/uploads writable/debugbar
+[ -e writable/.env ] || { touch writable/.env; chmod 0640 writable/.env; }
+chown www-data:www-data writable writable/.env writable/cache writable/logs writable/session writable/uploads writable/debugbar
 find writable -not -user www-data -exec chown www-data:www-data {} + 2>/dev/null || true
 
 if [ -f writable/installed.lock ]; then

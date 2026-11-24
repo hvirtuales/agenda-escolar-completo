@@ -41,6 +41,18 @@ class App extends BaseConfig
     {
         parent::__construct();
 
+        // Proxies de confianza (TRUSTED_PROXIES en el .env o en el entorno del contenedor: IPs o redes CIDR separadas por comas).
+        // Solo a estas IPs se les cree X-Forwarded-For (IP real del usuario) y X-Forwarded-Proto (si la conexión es HTTPS).
+        foreach (explode(',', (string) env('TRUSTED_PROXIES', '')) as $proxy) {
+            $proxy = trim($proxy);
+            [$addr, $mask] = array_pad(explode('/', $proxy, 2), 2, null);
+            $max = filter_var($addr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false ? 128 : 32;
+            if ($proxy !== '' && filter_var($addr, FILTER_VALIDATE_IP) !== false
+                && ($mask === null || (ctype_digit($mask) && (int) $mask <= $max))) {
+                $this->proxyIPs[$proxy] = 'X-Forwarded-For';
+            }
+        }
+
         $ips = gethostbynamel((string) gethostname()) ?: [];
         if (function_exists('net_get_interfaces')) {
             foreach (net_get_interfaces() ?: [] as $iface) {

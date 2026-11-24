@@ -69,6 +69,11 @@ function detectLayout(string $root): string
 
 function suggestedBaseUrl(string $layout): string
 {
+    // En Docker la URL pública viene de APP_URL (docker/.env).
+    $fixed = (string) getenv('APP_URL');
+    if (filter_var($fixed, FILTER_VALIDATE_URL) && preg_match('#^https?://#', $fixed)) {
+        return rtrim($fixed, '/') . '/';
+    }
     $https  = (! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $path   = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
@@ -135,6 +140,9 @@ function writeEnv(string $root, array $in): void
         '',
         'agendaescolar.mfaForAdmins = true', // las cuentas de demostración (users.is_demo) quedan exentas; el superadministrador no
         'agendaescolar.demoMode = ' . ($in['demo'] ? 'true' : 'false'),
+        '',
+        '# Detrás de un proxy o balanceador con HTTPS: sus IPs o redes, separadas por comas (p. ej. 10.0.0.0/8).',
+        '# TRUSTED_PROXIES = ',
     ];
     if ($in['api_key'] !== '') {
         $lines[] = '';

@@ -104,4 +104,18 @@ class Cookie extends BaseConfig
      * @see https://tools.ietf.org/html/rfc2616#section-2.2
      */
     public bool $raw = false;
+
+    /**
+     * Cookie segura: si el .env no fija cookie.secure, se activa sola cuando la plataforma funciona con HTTPS
+     * (app.baseURL con https:// o app.forceGlobalSecureRequests). Así la sesión nunca viaja por HTTP en producción.
+     */
+    public function __construct()
+    {
+        parent::__construct();
+
+        if (env("cookie.secure") === null) {
+            $this->secure = str_starts_with((string) env("app.baseURL", ""), "https://")
+                || filter_var(env("app.forceGlobalSecureRequests", false), FILTER_VALIDATE_BOOLEAN);
+        }
+    }
 }
