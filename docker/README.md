@@ -5,33 +5,43 @@ Sirve para un VPS o servidor propio. En cPanel no se usa Docker: allí va el ZIP
 
 Dominio configurado: **https://agendaescolar.co/** (`APP_URL` en `docker/.env`).
 
-## Cómo queda armado
+## Cómo queda armado (VPS de Hostinger)
 ```
-Internet ──HTTPS──> proxy con certificado (Nginx/Caddy) ──HTTP──> 127.0.0.1:8080 (app) ──> db (red interna)
+Internet ──443──> Caddy existente (ai-specialists-caddy-1)
+                    ├── dominios de ai-specialists ──> sus contenedores
+                    └── agendaescolar.co ──> agenda-escolar-app:80 ──> agenda-escolar-db (red interna)
 ```
-- La app solo escucha en `127.0.0.1`: desde fuera no se llega sin pasar por el proxy.
-- La base de datos no publica ningún puerto.
-- `TRUSTED_PROXIES` (por defecto la red interna de Docker) indica a CodeIgniter de qué IPs creer `X-Forwarded-For` y
-  `X-Forwarded-Proto`. Sin eso la app no sabría que la conexión es HTTPS y registraría la IP del proxy.
+- No se instala otro Caddy: el que ya corre atiende también `agendaescolar.co` y saca su certificado.
+- La app se une a la red de ese Caddy (`PROXY_NETWORK`) con el alias único `agenda-escolar-app` y **no publica puertos**.
+- La base de datos solo está en la red interna del proyecto (alias `agenda-escolar-db`).
+- `TRUSTED_PROXIES` indica a CodeIgniter de qué IPs creer `X-Forwarded-For` y `X-Forwarded-Proto` (los envía Caddy).
+  Sin eso la app no sabría que la conexión es HTTPS y registraría la IP del proxy.
 
 ## Primera instalación
-```bash
-cd docker
-cp .env.example .env          # cambie DB_PASSWORD y DB_ROOT_PASSWORD
-docker compose up -d --build
-```
-Configure el proxy para `agendaescolar.co` → `http://127.0.0.1:8080`, enviando `Host` y `X-Forwarded-Proto: https`.
-Ejemplo con Caddy (obtiene el certificado solo):
-```
-agendaescolar.co {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-Abra `https://agendaescolar.co/install.php`:
+1. **DNS**: registros A de `agendaescolar.co` y `www` → IP del VPS.
+2. **Código** (repositorio privado: agregue una *deploy key* de solo lectura en GitHub):
+   ```bash
+   git clone git@github.com:hvirtuales/agenda-escolar.git /opt/agenda-escolar
+   cd /opt/agenda-escolar/docker
+   cp .env.example .env          # cambie DB_PASSWORD y DB_ROOT_PASSWORD; revise PROXY_NETWORK
+   ```
+   Compruebe el nombre de la red del Caddy y póngalo en `PROXY_NETWORK`:
+   ```bash
+   docker inspect ai-specialists-caddy-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+   ```
+3. **Levantar**: `docker compose up -d --build`
+4. **Caddy**: agregue el contenido de `docker/caddy/agendaescolar.caddy` al final de `/opt/ai-specialists/infra/Caddyfile`
+   (edítelo con `nano`, que conserva el archivo montado) y recargue sin cortar los otros sitios:
+   ```bash
+   docker exec ai-specialists-caddy-1 caddy validate --config /etc/caddy/Caddyfile
+   docker exec ai-specialists-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+   ```
+   Si el reload no ve el cambio (algunos editores reemplazan el archivo), reinicie: `docker restart ai-specialists-caddy-1`.
+5. **Instalador**: abra `https://agendaescolar.co/install.php`:
 
 | Campo | Valor |
 |---|---|
-| Servidor | `db` |
+| Servidor | `agenda-escolar-db` |
 | Puerto | `3306` |
 | Base de datos, usuario, contraseña | los de `docker/.env` |
 | URL de la plataforma | ya viene propuesta: `https://agendaescolar.co/` |

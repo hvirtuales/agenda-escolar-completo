@@ -1,0 +1,16 @@
+# Bloque para el Caddyfile del Caddy existente (/opt/ai-specialists/infra/Caddyfile).
+# Péguelo al final del archivo y recargue Caddy (ver docker/README.md). Caddy saca y renueva el certificado solo.
+
+agendaescolar.co {
+	encode zstd gzip
+	# Igual que php.ini (upload_max_filesize 24M / post_max_size 28M)
+	request_body {
+		max_size 30MB
+	}
+	reverse_proxy agenda-escolar-app:80
+}
+
+# www redirige al dominio principal
+www.agendaescolar.co {
+	redir https://agendaescolar.co{uri} permanent
+}
