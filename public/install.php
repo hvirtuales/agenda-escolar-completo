@@ -278,10 +278,10 @@ $token   = $_SESSION['install_token'];
 
 $in = [
     'base_url'    => trim($_POST['base_url'] ?? suggestedBaseUrl($layout)),
-    'db_host'     => trim($_POST['db_host'] ?? 'localhost'),
+    'db_host'     => trim($_POST['db_host'] ?? (getenv('DB_HOST') ?: 'localhost')), // en Docker los propone docker-compose.yml
     'db_port'     => trim($_POST['db_port'] ?? '3306'),
-    'db_name'     => trim($_POST['db_name'] ?? ''),
-    'db_user'     => trim($_POST['db_user'] ?? ''),
+    'db_name'     => trim($_POST['db_name'] ?? (string) getenv('DB_NAME')),
+    'db_user'     => trim($_POST['db_user'] ?? (string) getenv('DB_USER')),
     'db_pass'     => (string) ($_POST['db_pass'] ?? ''),
     'admin_name'  => trim($_POST['admin_name'] ?? ''),
     'admin_email' => strtolower(trim($_POST['admin_email'] ?? '')),

@@ -1,133 +1,84 @@
-# Agenda Escolar con Docker
+# Agenda Escolar con Docker (VPS de Hostinger)
 
-Dos contenedores: **app** (PHP 8.4 + Apache, raíz web en `public/`) y **db** (MariaDB 11.4), o solo **app** conectada a una MariaDB compartida (ver «Base de datos compartida»).
-Sirve para un VPS o servidor propio. En cPanel no se usa Docker: allí va el ZIP o el repositorio completo.
+La app (PHP 8.4 + Apache, raíz web en `public/`) usa la **MariaDB compartida** del VPS y el **Caddy que ya existe**
+(proyecto ai-specialists). Dominio: **https://agendaescolar.co/**.
 
-Dominio configurado: **https://agendaescolar.co/** (`APP_URL` en `docker/.env`).
-
-## Cómo queda armado (VPS de Hostinger)
 ```
-Internet ──443──> Caddy existente (ai-specialists-caddy-1)
-                    ├── dominios de ai-specialists ──> sus contenedores
-                    └── agendaescolar.co ──> agenda-escolar-app:80 ──> agenda-escolar-db (red interna)
+Internet ──443──> Caddy existente ──red del Caddy──> agenda-escolar-app ──red db-compartida──> db-compartida (MariaDB)
+                                                                                                 └── otras bases de otros proyectos
 ```
-- No se instala otro Caddy: el que ya corre atiende también `agendaescolar.co` y saca su certificado.
-- La app se une a la red de ese Caddy (`PROXY_NETWORK`) con el alias único `agenda-escolar-app` y **no publica puertos**.
-- La base de datos solo está en la red interna del proyecto (alias `agenda-escolar-db`).
-- `TRUSTED_PROXIES` indica a CodeIgniter de qué IPs creer `X-Forwarded-For` y `X-Forwarded-Proto` (los envía Caddy).
-  Sin eso la app no sabría que la conexión es HTTPS y registraría la IP del proxy.
+- Ni la app ni la base publican puertos: solo se llega por Caddy, y a la base solo desde la red `db-compartida`.
+- Cada proyecto tiene su base y su usuario en la MariaDB compartida (`db-compartida/crear-base.sh`).
+- `TRUSTED_PROXIES` indica a CodeIgniter de qué IPs creer `X-Forwarded-For`/`X-Forwarded-Proto` (los envía Caddy).
 
-## Primera instalación
-1. **DNS**: registros A de `agendaescolar.co` y `www` → IP del VPS.
-2. **Código** (repositorio privado: agregue una *deploy key* de solo lectura en GitHub):
-   ```bash
-   git clone git@github.com:hvirtuales/agenda-escolar.git /var/www/html
-   cd /var/www/html/docker
-   cp .env.example .env          # cambie DB_PASSWORD y DB_ROOT_PASSWORD; revise PROXY_NETWORK
-   ```
-   Compruebe el nombre de la red del Caddy y póngalo en `PROXY_NETWORK`:
-   ```bash
-   docker inspect ai-specialists-caddy-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
-   ```
-3. **Levantar**: `docker compose up -d --build`
-4. **Caddy**: agregue el contenido de `docker/caddy/agendaescolar.caddy` al final de `/opt/ai-specialists/infra/Caddyfile`
-   (edítelo con `nano`, que conserva el archivo montado) y recargue sin cortar los otros sitios:
-   ```bash
-   docker exec ai-specialists-caddy-1 caddy validate --config /etc/caddy/Caddyfile
-   docker exec ai-specialists-caddy-1 caddy reload --config /etc/caddy/Caddyfile
-   ```
-   Si el reload no ve el cambio (algunos editores reemplazan el archivo), reinicie: `docker restart ai-specialists-caddy-1`.
-5. **Instalador**: abra `https://agendaescolar.co/install.php`:
-
-| Campo | Valor |
+| Carpeta en el VPS | Qué es |
 |---|---|
-| Servidor | `agenda-escolar-db` |
-| Puerto | `3306` |
-| Base de datos, usuario, contraseña | los de `docker/.env` |
-| URL de la plataforma | ya viene propuesta: `https://agendaescolar.co/` |
+| `/docker/agenda-escolar` | clon de este repositorio (se actualiza con `git pull`) |
+| `/docker/agenda-escolar/docker/.env` | configuración de Docker del proyecto (no está en git) |
+| `/docker/db-compartida` | la MariaDB compartida (la crea `instalar.sh`) |
 
-El instalador crea el `.env`, la base de datos y el superadministrador. Al reiniciar el contenedor, `install.php` deja de publicarse.
-
-## Dónde quedan los datos
-- Volumen `app_data` → `writable/`: el `.env` de la aplicación (clave de cifrado incluida), sesiones, registros y archivos de los colegios.
-- Volumen `db_data` → la base de datos.
-
-Recrear o actualizar los contenedores no borra nada. **No use `docker compose down -v`**: eso elimina los volúmenes.
+## Instalar desde cero
+1. **DNS**: registros A de `agendaescolar.co` y `www` → IP del VPS (y ningún AAAA apuntando a otro servidor).
+2. **Llave de solo lectura para GitHub** (el repositorio es privado):
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/agenda_escolar -N "" -C "vps-agenda-escolar"
+   cat ~/.ssh/agenda_escolar.pub
+   ```
+   GitHub › `hvirtuales/agenda-escolar` › Settings › Deploy keys › Add deploy key (sin «Allow write access»).
+3. **Clonar e instalar**:
+   ```bash
+   GIT_SSH_COMMAND="ssh -i ~/.ssh/agenda_escolar -o IdentitiesOnly=yes" git clone git@github.com:hvirtuales/agenda-escolar.git /docker/agenda-escolar
+   cd /docker/agenda-escolar
+   git config core.sshCommand "ssh -i ~/.ssh/agenda_escolar -o IdentitiesOnly=yes"
+   cd docker && sh instalar.sh
+   ```
+   `instalar.sh` detecta el Caddy y su red, monta la base compartida en `/docker/db-compartida`, crea la base `educai`
+   (**muestra su contraseña una sola vez: guárdela**), construye y levanta la app, comprueba que Caddy la alcanza y
+   ofrece agregar el sitio al Caddyfile (con copia de respaldo y validación).
+4. **Instalador web**: `https://agendaescolar.co/install.php` — servidor `db-compartida`, base y usuario `educai`,
+   la contraseña del paso 3. Crea el `.env` de la app y el superadministrador.
+5. Retirar el instalador: `cd /docker/agenda-escolar/docker && docker compose restart app`.
 
 ## Actualizar
 ```bash
-git pull
-cd docker && docker compose build --pull && docker compose up -d
+cd /docker/agenda-escolar && git pull
+cd docker && docker compose up -d --build
 ```
 Luego, como superadministrador: **Consola › Configuración › Base de datos › Actualizar base de datos**
-(o `AUTO_MIGRATE=1` en `docker/.env` para aplicar las migraciones al arrancar).
+(o `AUTO_MIGRATE=1` en `docker/.env`).
 
-Las imágenes base están fijadas por versión y huella (`docker/Dockerfile`, `docker-compose.yml`). Para traer parches de
-seguridad, actualice esas versiones (a mano o con Renovate/Dependabot) y reconstruya. Revise la imagen con:
+## Dónde quedan los datos
+- Volumen `agenda-escolar_app_data` → `writable/`: el `.env` de la app (clave de cifrado incluida), sesiones, registros y archivos de los colegios.
+- Base `educai` dentro de la MariaDB compartida (volumen `db-compartida_datos`).
+
+Recrear o actualizar contenedores no borra nada. **No use `docker compose down -v`**: elimina los volúmenes.
+
+## Respaldos
 ```bash
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --ignore-unfixed agenda-escolar:latest
+mkdir -p /root/respaldos
+cd /docker/db-compartida && docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb-dump -uroot --single-transaction educai' > /root/respaldos/educai-$(date +%F).sql
+docker run --rm -v agenda-escolar_app_data:/w -v /root/respaldos:/r alpine tar czf /r/agenda-escolar-archivos-$(date +%F).tgz -C /w .
 ```
 
-## Base de datos compartida (sin MariaDB propia)
-Una sola MariaDB para varios proyectos del VPS, en su propia red (`db-compartida`), sin puertos publicados.
-Cada proyecto tiene su base y su usuario, que solo ve su base.
-```
-agenda-escolar-app ──red db-compartida──> db-compartida (MariaDB)  <── otros proyectos (cada uno con su usuario)
-```
-
-### 1. Montar la base compartida (una sola vez por VPS)
+## Base compartida para otros proyectos
 ```bash
-mkdir -p /opt/db-compartida
-cp /var/www/html/docker/db-compartida/docker-compose.yml /var/www/html/docker/db-compartida/crear-base.sh /var/www/html/docker/db-compartida/.env.example /opt/db-compartida/
-cd /opt/db-compartida
-cp .env.example .env
-sed -i "s|^DB_ROOT_PASSWORD=.*|DB_ROOT_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=')|" .env
-chmod 600 .env && chmod +x crear-base.sh
-docker compose up -d
-docker compose ps            # espere «healthy»
+cd /docker/db-compartida && ./crear-base.sh nombre_proyecto
 ```
+El otro proyecto se une a la red externa `db-compartida` y se conecta a `db-compartida:3306` con su usuario.
 
-### 2. Crear la base de un proyecto
-```bash
-cd /opt/db-compartida && ./crear-base.sh educai
-```
-Muestra la contraseña una sola vez: guárdela.
-
-### 3a. Instalación nueva sin MariaDB propia
-En `docker/.env`: `COMPOSE_FILE=docker-compose.externa.yml`. Luego `docker compose up -d --build` y en el instalador:
-servidor `db-compartida`, base y usuario `educai`, y la contraseña del paso 2.
-
-### 3b. Migrar la instalación actual (la que ya tiene MariaDB propia)
-```bash
-cd /var/www/html && git pull
-cd docker && chmod +x migrar-a-db-compartida.sh && ./migrar-a-db-compartida.sh
-```
-El script pide la contraseña del paso 2 y:
-1. respalda la base y el `.env` de la app en `/root/respaldos/`;
-2. detiene la app (unos minutos fuera de línea), copia la base y **compara los conteos** (usuarios, instituciones, auditoría…);
-3. cambia la conexión en el `.env` de la app, la arranca con `docker-compose.externa.yml` y comprueba que responde;
-4. **detiene, pero no borra,** la MariaDB propia.
-
-Si algo falla antes del cambio, la app vuelve a arrancar como estaba. Para volver atrás después:
-`./migrar-a-db-compartida.sh --revertir`.
-Tras una semana sin problemas, borre la MariaDB propia: `docker compose -f docker-compose.yml rm -f db` y su volumen (`docker volume ls | grep db_data`).
-
-**Respaldo** de la base compartida (todas las bases):
-```bash
-cd /opt/db-compartida && docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb-dump -uroot --all-databases --single-transaction' > /root/respaldos/db-compartida-$(date +%F).sql
-```
+## Alternativa: MariaDB propia
+En un servidor sin la base compartida: en `docker/.env` ponga `COMPOSE_FILE=docker-compose.db-propia.yml`,
+`DB_PASSWORD` y `DB_ROOT_PASSWORD`, y `docker compose up -d --build`. En el instalador: servidor `agenda-escolar-db`.
 
 ## Seguridad aplicada
-- Imagen en dos etapas: la final no lleva compiladores, paquetes `-dev`, `unzip` ni Composer; se aplican las actualizaciones de Debian.
-- El código es de `root`; PHP (www-data) solo puede escribir en `writable/`.
-- Contenedor sin privilegios extra (`no-new-privileges`, solo las capacidades mínimas).
-- PHP: sin errores en pantalla, sin versión expuesta, sesiones en modo estricto, funciones de ejecución de comandos deshabilitadas.
-- Apache: `ServerTokens Prod`, `TRACE` deshabilitado. Cookies con `Secure` automático bajo HTTPS.
+- Imagen en dos etapas, versiones fijadas con huella; la final no lleva compiladores, paquetes `-dev`, `unzip` ni Composer.
+- El código es de `root`; PHP (www-data) solo escribe en `writable/`. Contenedor con `no-new-privileges` y capacidades mínimas.
+- PHP sin errores en pantalla ni versión expuesta, sesiones estrictas, sin funciones de ejecución de comandos.
+- Apache con `ServerTokens Prod` y `TRACE` deshabilitado. Cookies `Secure` automáticas bajo HTTPS.
+- Revisar la imagen: `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --ignore-unfixed agenda-escolar:latest`
 
 ## Tareas útiles
 ```bash
-docker compose exec -u www-data app php spark demo:reset          # restaurar el colegio de demostración
 docker compose exec -u www-data app php spark migrate --all
 docker compose logs -f app
-docker compose exec db mariadb-dump -u root -p educai > respaldo.sql   # respaldo
 ```

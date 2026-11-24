@@ -1,13 +1,11 @@
-# Agenda Escolar con Docker: la aplicación (PHP 8.4 + Apache) y MariaDB.
-# Uso (desde esta carpeta docker/):
-#   cp .env.example .env      # y cambie las contraseñas
-#   docker compose up -d --build
-#   abra https://agendaescolar.co/install.php   (servidor de base de datos: agenda-escolar-db)
-# HTTPS: lo da el Caddy que ya corre en el VPS (proyecto ai-specialists). La app se une a su red con el alias
-# «agenda-escolar-app» y no publica puertos; ver docker/caddy/agendaescolar.caddy.
+# Agenda Escolar con Docker: solo la aplicación (PHP 8.4 + Apache). La base de datos es la MariaDB compartida del VPS
+# (docker/db-compartida/, montada en /docker/db-compartida). Lo más fácil es instalar con: ./instalar.sh
 #
-# Modo con MariaDB propia (este archivo). Para usar la base de datos compartida del VPS: docker-compose.externa.yml
-# (se elige con COMPOSE_FILE en docker/.env). Mantenga el servicio «app» igual en los dos archivos.
+# - HTTPS: lo da el Caddy que ya corre en el VPS. La app se une a su red (PROXY_NETWORK) con el alias
+#   «agenda-escolar-app» y no publica puertos (bloque para el Caddyfile: docker/caddy/agendaescolar.caddy).
+# - Base de datos: la app se une a la red «db-compartida», donde la base responde como «db-compartida».
+# - Alternativa con MariaDB propia: docker-compose.db-propia.yml (COMPOSE_FILE en docker/.env).
+#   Mantenga el servicio «app» igual en los dos archivos.
 name: agenda-escolar
 
 services:
@@ -21,6 +19,10 @@ services:
       APP_URL: "${APP_URL:-https://agendaescolar.co/}"
       TRUSTED_PROXIES: "${TRUSTED_PROXIES:-172.16.0.0/12}"
       AUTO_MIGRATE: "${AUTO_MIGRATE:-0}"
+      # Solo para proponer los datos en el instalador (la contraseña se escribe a mano)
+      DB_HOST: db-compartida
+      DB_NAME: "${DB_NAME:-educai}"
+      DB_USER: "${DB_USER:-educai}"
     volumes:
       - app_data:/var/www/html/writable   # .env, sesiones, registros y archivos de los colegios
     security_opt:
@@ -34,45 +36,18 @@ services:
       - NET_BIND_SERVICE
       - DAC_OVERRIDE
     networks:
-      default:
       proxy:
         aliases:
           - agenda-escolar-app            # nombre único en la red compartida (otros proyectos pueden tener un «app»)
-    depends_on:
-      db:
-        condition: service_healthy
-
-  db:
-    # Versión fijada con su huella; para actualizar, cambie ambas y: docker compose pull db && docker compose up -d
-    image: mariadb:11.4.13@sha256:a8992b5e5404d11e03c54a31d0c1bdea3fd116d283aa6d1a627551f29045309b
-    restart: unless-stopped
-    environment:
-      MARIADB_DATABASE: "${DB_NAME:-educai}"
-      MARIADB_USER: "${DB_USER:-educai}"
-      MARIADB_PASSWORD: "${DB_PASSWORD:?Defina DB_PASSWORD en docker/.env}"
-      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD en docker/.env}"
-    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
-    volumes:
-      - db_data:/var/lib/mysql
-    networks:
-      default:
-        aliases:
-          - agenda-escolar-db             # nombre único: la app también está en la red compartida, donde otro proyecto puede tener un «db»
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      basedatos: {}
 
 networks:
-  default:                                # red interna: app ↔ db (la base de datos no sale de aquí)
   proxy:                                  # red del Caddy existente
     external: true
     name: "${PROXY_NETWORK:-ai-specialists_default}"
+  basedatos:                              # red de la MariaDB compartida
+    external: true
+    name: "${DB_NETWORK:-db-compartida}"
 
 volumes:
   app_data:
-  db_data:

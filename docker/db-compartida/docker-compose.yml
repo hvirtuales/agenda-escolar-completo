@@ -1,6 +1,6 @@
 # MariaDB compartida por los proyectos del VPS (Agenda Escolar y los que vengan).
-# Es infraestructura propia: copie esta carpeta a /opt/db-compartida y adminístrela desde allí.
-#   cd /opt/db-compartida && cp .env.example .env   (ponga DB_ROOT_PASSWORD)
+# Es infraestructura propia: copie esta carpeta a /docker/db-compartida y adminístrela desde allí.
+#   cd /docker/db-compartida && cp .env.example .env   (ponga DB_ROOT_PASSWORD)
 #   docker compose up -d
 #   ./crear-base.sh educai        (una base y un usuario por proyecto)
 #
@@ -14,7 +14,7 @@ services:
     image: mariadb:11.4.13@sha256:a8992b5e5404d11e03c54a31d0c1bdea3fd116d283aa6d1a627551f29045309b
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD en /opt/db-compartida/.env}"
+      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?Defina DB_ROOT_PASSWORD en /docker/db-compartida/.env}"
       MARIADB_AUTO_UPGRADE: "1"           # al subir de versión, actualiza las tablas del sistema solo
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     volumes:
