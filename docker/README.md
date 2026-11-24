@@ -21,8 +21,8 @@ Internet ──443──> Caddy existente (ai-specialists-caddy-1)
 1. **DNS**: registros A de `agendaescolar.co` y `www` → IP del VPS.
 2. **Código** (repositorio privado: agregue una *deploy key* de solo lectura en GitHub):
    ```bash
-   git clone git@github.com:hvirtuales/agenda-escolar.git /opt/agenda-escolar
-   cd /opt/agenda-escolar/docker
+   git clone git@github.com:hvirtuales/agenda-escolar.git /var/www/html
+   cd /var/www/html/docker
    cp .env.example .env          # cambie DB_PASSWORD y DB_ROOT_PASSWORD; revise PROXY_NETWORK
    ```
    Compruebe el nombre de la red del Caddy y póngalo en `PROXY_NETWORK`:
